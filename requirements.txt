@@ -11,5 +11,3 @@ streamlit-aggrid
 numpy
 pandas
 joblib
-re
-os
