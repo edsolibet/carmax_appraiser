@@ -6,13 +6,17 @@ Created on Tue Feb  7 10:50:02 2023
 """
 import pandas as pd
 import numpy as np
-import re, os
-from import_carmax_data import import_hist_carmax_gsheet, import_all_carmax_data
+import re, os, sys
+from datetime import datetime
+import config_carmax
+import time
+#from import_carmax_data_v2 import import_competitor_data, import_carmax_backend_data
 
 import streamlit as st
 
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.cluster import KMeans
 from sklearn.model_selection import GridSearchCV
 from sklearn.linear_model import ElasticNet
 from xgboost import XGBClassifier, XGBRegressor
@@ -26,71 +30,60 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import plotly.express as px
 
-def cleanup_model(s, ref):
-    '''
-    Cleans up model strings by using most popular models as reference
-    
-    Parameters
-    ----------
-    s : string
-        model string
-    ref: list
-        popular_models
-    
-    Returns
-    -------
-    model : string
-    
-    '''
-    
-    model = s
-    for m in ref:
-        if m in s:
-            model = m
-            break
-        else:
-            continue
-    
-    return model
+sys.path.append(os.path.dirname(os.path.realpath(__file__)))
+output_path = os.path.abspath(os.path.dirname(__file__)) # current working dir
+os.chdir(output_path)
 
-@st.experimental_memo
+#@st.cache_data
 def import_carmax_data():
     '''
     Returns
     -------
     import_carmax_gsheet : pandas dataframe
     '''
-    # competitor_data
-    if os.path.exists('carmax_competitor_data.csv'):
-        final_competitor_data = pd.read_csv('carmax_competitor_data.csv')
+    start_time = time.time()
+    print ('Start data import')
+    final_competitor_data = pd.read_csv('carmax_competitor_data.csv')
+    print ('Imported competitor data')
+    print("--- %s seconds ---" % (time.time() - start_time))
+    # # competitor_data
+    # competitor_data_dtime = datetime.fromtimestamp(os.path.getmtime(r'C:\Users\carlo\Documents\LICA Auto\carmax\scrapers\carmax_scrapers\spiders\carmax_competitor_data.csv')).date
+    # # hist_data_dtime = datetime.fromtimestamp(os.path.getmtime('carmax_hist_data.csv')).date
+    
+    # if os.path.exists(r'C:\Users\carlo\Documents\LICA Auto\carmax\scrapers\carmax_scrapers\spiders\carmax_competitor_data.csv') and (datetime.today().date() == competitor_data_dtime):
+    #     final_competitor_data = pd.read_csv(r'C:\Users\carlo\Documents\LICA Auto\carmax\scrapers\carmax_scrapers\spiders\carmax_competitor_data.csv')
         
-    else:
-        competitor_data = import_all_carmax_data()
+    # else:
+    #     competitor_data = import_competitor_data()
         
-        # fuel type, transmission, mileage
-        final_competitor_data = competitor_data[~(competitor_data['fuel_type'].isnull()) &
-                                                ~(competitor_data['mileage'].isnull()) & 
-                                                ~ (competitor_data['transmission'].isnull())]
-        final_competitor_data = final_competitor_data.reset_index().drop('index', axis=1)
+    #     # fuel type, transmission, mileage
+    #     final_competitor_data = competitor_data[~(competitor_data['fuel_type'].isnull()) &
+    #                                             ~(competitor_data['mileage'].isnull()) & 
+    #                                             ~ (competitor_data['transmission'].isnull())]
+    #     final_competitor_data = final_competitor_data.reset_index().drop('index', axis=1)
         
-        # data cleaning
-        final_competitor_data.loc[:, 'model'] = final_competitor_data.loc[:,'model'].apply(lambda x: re.sub('[AM(CV)](/)?T', '', x).strip())
-        popular_models = list(final_competitor_data.model.value_counts()[final_competitor_data.model.value_counts() >= 3].index)
-        final_competitor_data.loc[:,'model'] = final_competitor_data.model.apply(lambda x: cleanup_model(x, popular_models))
-        final_competitor_data.loc[:,'make'] = final_competitor_data.make.apply(lambda x: x.upper())
-        final_competitor_data.loc[:,'transmission'] = final_competitor_data.loc[:,'transmission'].apply(lambda x: x.upper())
-        # save file
-        final_competitor_data.to_csv('carmax_competitor_data.csv')
+    #     # data cleaning
+    #     final_competitor_data.loc[:, 'model'] = final_competitor_data.loc[:,'model'].apply(lambda x: re.sub('[AM(CV)](/)?T', '', x).strip())
+    #     popular_models = list(final_competitor_data.model.value_counts()[final_competitor_data.model.value_counts() >= 3].index)
+    #     final_competitor_data.loc[:,'model'] = final_competitor_data.model.apply(lambda x: cleanup_model(x, popular_models))
+    #     final_competitor_data.loc[:,'make'] = final_competitor_data.make.apply(lambda x: x.upper())
+    #     final_competitor_data.loc[:,'transmission'] = final_competitor_data.loc[:,'transmission'].apply(lambda x: x.upper())
+    #     # save file
+    #     final_competitor_data.to_csv('carmax_competitor_data.csv', index = 'False')
     
     # hist data
-    if os.path.exists('carmax_hist_data.csv'):
-        hist_data = pd.read_csv('carmax_hist_data.csv')
-    else:
-        hist_data = import_hist_carmax_gsheet()
-        hist_data = hist_data.reset_index().drop('index', axis=1)
-        hist_data.to_csv('carmax_hist_data.csv')
-        
-    return final_competitor_data, hist_data
+    # if os.path.exists('carmax_hist_data.csv') and (datetime.today().date() == hist_data_dtime):
+    #     hist_data = pd.read_csv('carmax_hist_data.csv')
+    # else:
+    #     hist_data = import_hist_carmax_gsheet()
+    #     hist_data = hist_data.reset_index().drop('index', axis=1)
+    #     hist_data.to_csv('carmax_hist_data.csv', index = False)
+    start_time = time.time()
+    backend_data = config_carmax.import_backend_data(None)
+    print('Imported backend data')
+    print("TOTAL: %s seconds" % (time.time() - start_time))
+    return final_competitor_data, backend_data
+
 
 def feature_filter(data, upper = None, lower = 0):
     '''
@@ -121,7 +114,7 @@ def feature_filter(data, upper = None, lower = 0):
     
     return result
         
-@st.experimental_memo
+#@st.cache_data
 def training_data_prep(df, test_size = 0.2, rs = 101):
     '''
     Prepare filtered data for training into models
@@ -175,7 +168,7 @@ def training_data_prep(df, test_size = 0.2, rs = 101):
     
     return X_train, X_test, y_train, y_test
     
-@st.experimental_singleton
+#@st.cache_resource
 def rf_model(X_train, y_train, grid_search = False, random_state = 101):
     '''
     
@@ -218,7 +211,7 @@ def rf_model(X_train, y_train, grid_search = False, random_state = 101):
         
     return clf
 
-@st.experimental_singleton
+#@st.cache_resource
 def xgb_model(X_train, y_train, grid_search = False, random_state = 101):
     '''
     
@@ -264,7 +257,7 @@ def xgb_model(X_train, y_train, grid_search = False, random_state = 101):
         
     return clf
 
-@st.experimental_singleton
+#@st.cache_resource
 def linear_model(X_train, y_train, grid_search = False, random_state = 101):
     '''
     
@@ -357,86 +350,166 @@ def use_plotly(y_true, y_preds):
     
     return fig_1
 
+def remove_outliers(x, col):
+    data = x[col]
+    q25 = data.quantile(0.25)
+    q75 = data.quantile(0.75)
+    iqr = q75 - q25
+    data = data[data <= (q75 + 1.5*iqr)]
+    data = data[data >= (q25 - 1.5*iqr)]
+    return x.reindex(data.index)
+
+
+def year_mileage(data):
+    data_list = []
+    for y in list(data['year'].unique()):
+        temp = remove_outliers(data[data['year'] == y], 'mileage')
+        data_list.append(temp)
+    
+    return pd.concat(data_list)
+   
+def cluster_carmax(data, clusters = 4):
+    data = data.reset_index().drop('index', axis=1)
+    cats = data.select_dtypes(include = object).columns
+    if len(cats) == 0:
+        X = data.copy()
+    else:
+        X = data[['days_on_hand', 'gp_%']]
+        enc = OneHotEncoder(sparse = False)
+        enc.fit(data[cats])
+        X_enc = pd.DataFrame(enc.transform(data[cats]), columns = enc.get_feature_names_out())
+        X = pd.concat([X, X_enc], axis=1)
+    
+    kmeans = KMeans(n_clusters = clusters)
+    kmeans.fit(X)
+    X['labels'] = kmeans.predict(X)
+    return X
+
+def appraisal(df1, df2, make, model, year):
+    comp = df1[(df1.make == make) & (df1.model == model) & (df1.year == year)]
+    be = df2[(df2.make == make) & (df2.model == model) & (df2.year == str(year))]
+    
+    # Statistical comparison with current competitor listings
+    print('Competitor Market Values')
+    avg_comp_stats = comp['price'].describe()
+    print(avg_comp_stats[['min', 'max', 'mean', '50%']])
+    
+    # Statistical comparison with historical carmax transactions
+    print('Carmax Historical Record')
+    avg_cmax_stats = be[['po_value', 'selling_price', 'amount_sold']].describe()
+    print(avg_cmax_stats)
+    
+    
+    
+    return comp, be
 
 
 
 if __name__ == "__main__":
-    st.title('CarMax Used Car Appraisal')
+    #st.title('CarMax Used Car Appraisal')
     
     #1 import data
-    df_data, df_hist = import_carmax_data()
+    df_comp, df_backend = import_carmax_data()
     
-    
-    #2 apply filters
-    
-    # price > 75,000 (390 removed)
-    price_filter = feature_filter(df_data['price'], 
-                                  lower = 75000)
-    filtered_data = df_data.filter(items = price_filter.index, axis=0)
-    
-    # year > 2010 (300 removed)
-    year_filter = feature_filter(filtered_data['year'], 
-                                 lower = 2005)
-    filtered_data = filtered_data.filter(items = year_filter.index, axis=0)
-    
-    # mileage
-    mileage_filter = feature_filter(filtered_data['mileage'], 
-                                    upper = 100000,
-                                    lower = 100)
-    filtered_data = filtered_data.filter(items = mileage_filter.index, axis=0)
-    
-    # make
-    make_filter = list(filtered_data.make.value_counts()[filtered_data.make.value_counts() < 10].index)
-    filtered_data = filtered_data[~filtered_data['make'].isin(make_filter)]
-    
-    # remove models with only 1 entry
-    filtered_data = filtered_data[filtered_data.model.isin(filtered_data.model.value_counts()[filtered_data.model.value_counts() != 1].index)]
-    
-    st.header('Filetered Carmax data')
-    # show filtered dataframe
-    st.dataframe(filtered_data)
-    
-    # divide data into train and test
-    X_train, X_test, y_train, y_test = training_data_prep(filtered_data, 
-                                                          test_size = 0.1,
-                                                          rs = 101)
-    
-    y_test = y_test.reset_index().drop('index', axis=1).sort_values(by = 'price')
-    X_test = X_test.reindex(y_test.index)
-    
-    # setup models
-    # xgboost, random forest, nonlinear regression, 
-    
-    # RANDOM FOREST
-    y_pred_rf = rf_model(X_train, y_train, grid_search = True).predict(X_test)
-    
-    # XGBRegressor
-    y_pred_xgb = xgb_model(X_train, y_train, grid_search = True).predict(X_test)
-    
-    # elastic net
-    y_pred_EL = linear_model(X_train, y_train, grid_search = True).predict(X_test)
-    
-    pred_list = [y_pred_rf, y_pred_xgb, y_pred_EL]
-    RMSE = [np.sqrt(mean_squared_error(y_test.to_numpy().ravel(), y)) for y in pred_list]
-    MAE = [mean_absolute_error(y_test.to_numpy().ravel(), y) for y in pred_list]
-    
-    # plot
-    st.plotly_chart(use_plotly(y_test, [pred_list[RMSE.index(min(RMSE))]]), use_container_width = True)
-    
-    st.header('Model Error Comparison')
-    mae_col, rmse_col = st.columns(2)
-    with mae_col:
-        st.subheader('MAE')
-        df_MAE = pd.DataFrame(MAE, index = ['RF', 'XGB', 'ElasticNet']).reset_index().rename(columns = {'index': 'model',
-                                                                                                      0 : 'MAE'})
-        st.dataframe(df_MAE)
+    make_col, model_col, year_col = st.columns(3)
+    with make_col:
+        make = st.selectbox('Make',
+                            options = config_carmax.makes_list,
+                            index = 0)
+    with model_col:
+        model = st.selectbox('Model',
+                            options = config_carmax.models_list,
+                            index = 0)
+    with year_col:
+        # year is kept as str datatype, list of year is generated from min year
+        yr = sorted(list(map(str, range(int(df_backend.year.min()), 
+                               datetime.today().year))), 
+                                reverse = True)
+        year = st.selectbox('Year',
+                            options = yr,
+                            index = 0)
         
-    with rmse_col:
-        st.subheader('RMSE')
-        df_RMSE = pd.DataFrame(RMSE, index = ['RF', 'XGB', 'ElasticNet']).reset_index().rename(columns = {'index': 'model',
-                                                                                                      0 : 'RMSE'})
-        st.dataframe(df_RMSE)
+    # market price
+    selected = df_comp[(df_comp.make == make) & (df_comp.model == model) & (df_comp.year == int(year))]
+    st.dataframe(selected[['make', 'model', 'year', 'transmission', 'mileage', 'fuel_type', 'price', 'url']])
     
+    
+    
+    
+    
+    # df_sold = df_backend[df_backend.current_status == 'Sold']
+    
+    # #2 apply filters
+    
+    # # price > 75,000 (390 removed)
+    # price_filter = feature_filter(df_comp['price'], 
+    #                               lower = 50000)
+    # filtered_data = df_comp.filter(items = price_filter.index, axis=0)
+    
+    # # year > 2010 (300 removed)
+    # year_filter = feature_filter(filtered_data['year'], 
+    #                               lower = 2000)
+    # filtered_data = filtered_data.filter(items = year_filter.index, axis=0)
+    
+    # # mileage
+    # mileage_filter = feature_filter(filtered_data['mileage'], 
+    #                                 upper = 100000,
+    #                                 lower = 100)
+    # filtered_data = filtered_data.filter(items = mileage_filter.index, axis=0)
+    
+    # # make
+    # make_filter = list(filtered_data.make.value_counts()[filtered_data.make.value_counts() < 10].index)
+    # filtered_data = filtered_data[~filtered_data['make'].isin(make_filter)]
+    
+    # # # remove models with only 1 entry
+    # # filtered_data = filtered_data[filtered_data.model.isin(filtered_data.model.value_counts()[filtered_data.model.value_counts() != 1].index)]
+    
+    # st.header('Filetered Carmax data')
+    # # show filtered dataframe
+    # st.dataframe(filtered_data)
+    
+    # # divide data into train and test
+    # X_train, X_test, y_train, y_test = training_data_prep(filtered_data, 
+    #                                                       test_size = 0.2,
+    #                                                       rs = 101)
+    
+    # y_test = y_test.reset_index().drop('index', axis=1).sort_values(by = 'price')
+    # X_test = X_test.reindex(y_test.index)
+    
+    # # setup models
+    # # xgboost, random forest, nonlinear regression, 
+    
+    # # RANDOM FOREST
+    # y_pred_rf = rf_model(X_train, y_train, grid_search = True).predict(X_test)
+    
+    # # XGBRegressor
+    # y_pred_xgb = xgb_model(X_train, y_train, grid_search = True).predict(X_test)
+    
+    # # elastic net
+    # y_pred_EL = linear_model(X_train, y_train, grid_search = True).predict(X_test)
+    
+    # pred_list = [y_pred_rf, y_pred_xgb, y_pred_EL]
+    # RMSE = [np.sqrt(mean_squared_error(y_test.to_numpy().ravel(), y)) for y in pred_list]
+    # MAE = [mean_absolute_error(y_test.to_numpy().ravel(), y) for y in pred_list]
+    
+    # # plot
+    # st.plotly_chart(use_plotly(y_test, [pred_list[RMSE.index(min(RMSE))]]), use_container_width = True)
+    
+    # st.header('Model Error Comparison')
+    # mae_col, rmse_col = st.columns(2)
+    # with mae_col:
+    #     st.subheader('MAE')
+    #     df_MAE = pd.DataFrame(MAE, index = ['RF', 'XGB', 'ElasticNet']).reset_index().rename(columns = {'index': 'model',
+    #                                                                                                   0 : 'MAE'})
+    #     st.dataframe(df_MAE)
+        
+    # with rmse_col:
+    #     st.subheader('RMSE')
+    #     df_RMSE = pd.DataFrame(RMSE, index = ['RF', 'XGB', 'ElasticNet']).reset_index().rename(columns = {'index': 'model',
+    #                                                                                                   0 : 'RMSE'})
+    #     st.dataframe(df_RMSE)
+    
+
     # print (f'Random Forest RMSE: {np.sqrt(mean_squared_error(y_test, y_pred_rf))}')
     # print (f'XGB RMSE: {np.sqrt(mean_squared_error(y_test, y_pred_xgb))}')
     # print (f'ElasticNet RMSE: {np.sqrt(mean_squared_error(y_test, y_pred_EL))}')
